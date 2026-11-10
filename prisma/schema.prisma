@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id               String           @id @default(cuid())
+  name             String
+  normalizedName   String
+  website          String?
+  normalizedDomain String?
+  country          String?
+  categories       String           @default("[]") // JSON string array of categories
+  description      String?
+  status           String           @default("NEW") // NEW, RESEARCHED, CONTACT_FOUND, ARCHIVED
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  contacts         Contact[]
+  researchRecords  ResearchRecord[]
+  drafts           EmailDraft[]
+  responses        Response[]
+
+  @@index([normalizedDomain])
+  @@index([normalizedName])
+  @@index([status])
+}
+
+model Contact {
+  id                 String       @id @default(cuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email              String
+  normalizedEmail    String
+  contactType        String       @default("GENERAL") // PR, PARTNERSHIPS, SUPPORT, FORM, GENERAL
+  sourceUrl          String?
+  sourceCheckedAt    DateTime?
+  verificationStatus String       @default("UNVERIFIED") // UNVERIFIED, VERIFIED, STALE, INVALID, SUPPRESSED
+  notes              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  drafts             EmailDraft[]
+
+  @@index([normalizedEmail])
+  @@index([companyId])
+}
+
+model ResearchRecord {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceUrl   String
+  sourceType  String   @default("OFFICIAL_WEBSITE") // OFFICIAL_WEBSITE, PRESS_RELEASE, MANUAL, CATALOG
+  facts       String   // JSON string containing factual points extracted
+  confidence  String   @default("VERIFIED") // VERIFIED, UNVERIFIED, STALE
+  researchedAt DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model EmailDraft {
+  id              String         @id @default(cuid())
+  companyId       String
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  subject         String
+  body            String
+  status          String         @default("NEEDS_REVIEW") // GENERATED, NEEDS_REVIEW, APPROVED, REJECTED, SENT, FAILED
+  version         Int            @default(1)
+  generatedAt     DateTime       @default(now())
+  editedAt        DateTime?
+  approvedAt      DateTime?
+  approvedVersion Int?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  messages        EmailMessage[]
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([status])
+}
+
+model EmailMessage {
+  id                String     @id @default(cuid())
+  draftId           String
+  draft             EmailDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  provider          String     @default("MOCK") // MOCK, GMAIL
+  providerMessageId String?
+  recipient         String
+  sentAt            DateTime   @default(now())
+  status            String     @default("SENT") // QUEUED, SENT, FAILED, DELIVERY_UNKNOWN
+  errorCode         String?
+  idempotencyKey    String     @unique
+
+  responses         Response[]
+
+  @@index([draftId])
+  @@index([recipient])
+}
+
+model Response {
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messageId    String?
+  message      EmailMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  responseType String        // INTERESTED, NOT_INTERESTED, SAMPLE_OFFERED, PRODUCT_SHIPPED, DECLINED, OTHER
+  receivedAt   DateTime      @default(now())
+  summary      String
+  isManual     Boolean       @default(true)
+
+  @@index([companyId])
+  @@index([messageId])
+}
+
+model Suppression {
+  id               String   @id @default(cuid())
+  normalizedEmail  String?
+  normalizedDomain String?
+  reason           String
+  createdAt        DateTime @default(now())
+  source           String   @default("MANUAL") // USER_OPT_OUT, BOUNCE, MANUAL
+
+  @@index([normalizedEmail])
+  @@index([normalizedDomain])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actor      String   @default("user")
+  action     String   // DRAFT_APPROVED, DRAFT_EDITED, MESSAGE_SENT, etc.
+  entityType String   // COMPANY, CONTACT, DRAFT, MESSAGE, SUPPRESSION
+  entityId   String
+  timestamp  DateTime @default(now())
+  metadata   String?  // JSON string
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+}
+
+model UserProfile {
+  id                String   @id @default("default-user")
+  displayName       String   @default("Ayush")
+  country           String   @default("India")
+  genuineBackground String   @default("Computer Science student and PC gaming enthusiast")
+  interests         String   @default("Controllers, mechanical keyboards, Hall effect sticks, esports peripherals")
+  portfolioLinks    String   @default("[]") // JSON string array of links
+  approvedSignature String   @default("Best regards,\nAyush\nComputer Science Student & Gaming Enthusiast")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model IntegrationAccount {
+  id             String   @id @default(cuid())
+  provider       String   @default("GMAIL")
+  accountEmail   String
+  scopes         String
+  encryptedToken String   // Encrypted payload
+  connectedAt    DateTime @default(now())
+  status         String   @default("ACTIVE") // ACTIVE, EXPIRED, REVOKED
+}
